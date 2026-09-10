@@ -2,17 +2,13 @@
 
 /**
  * What the interpreter is doing right now. Mirrors the status pill copy.
- * `sign` is separate from `reading` because a movement burst produces one
- * chip where a held pose produces one letter, and users need to see which
- * happened. `starting` covers the seconds between pressing the button and
- * the first tracked frame, which is long enough to need saying.
+ *
+ * `starting` covers the seconds between pressing the button and the first
+ * letter being possible, which is the camera opening, MediaPipe loading and
+ * the weights arriving — long enough to need saying. There is no separate
+ * status for word signs, because there is no word-sign model yet.
  */
-export type InterpreterStatus =
-  | "idle"
-  | "starting"
-  | "reading"
-  | "sign"
-  | "paused";
+export type InterpreterStatus = "idle" | "starting" | "reading" | "paused";
 
 /** A held handshape is a letter. A movement is a word sign. */
 export type TokenKind = "letter" | "sign";

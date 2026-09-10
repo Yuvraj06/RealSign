@@ -8,28 +8,28 @@ import type { Limit } from "../types";
  */
 const LIMITS: Limit[] = [
   {
+    title: "One person taught it, in one sitting",
+    body: "The model learned from 1,440 samples recorded through this app: 60 frames of each letter, one hand, one room, one camera. It reads 99.7% of the frames held out of that sitting, and that number says almost nothing about how it will read yours.",
+  },
+  {
     title: "A word list, not a language",
-    body: "realsign reads the manual alphabet and a fixed set of signs, one at a time, in their dictionary form. That is a useful input method and it is much further from fluent ASL than the size of the list suggests.",
+    body: "It reads 24 handshapes of the manual alphabet, one at a time. Fingerspelling is how ASL handles names and words it has no sign for — it is not how ASL is spoken, and it is a fraction of the language.",
   },
   {
-    title: "Facial grammar is missing",
-    body: "Eyebrows, mouth and head movement carry real meaning in ASL. None of it is captured here.",
+    title: "No J, no Z, no word signs",
+    body: "J and Z are traced in the air rather than held, so a single frame of either is already a different letter. Word signs are movements too. Both need a model that reads a sequence, and that does not exist here yet.",
   },
   {
-    title: "No signing space",
-    body: "Real signing places signs in the space around the signer and refers back to those places later. realsign reads each sign on its own and forgets where you put it.",
+    title: "Letters that look alike get confused",
+    body: "M, N, S and T are the same fist with the thumb in four places, and R, U and V differ by how two fingers cross. When the model is unsure it says so with a number instead of guessing confidently.",
   },
   {
-    title: "One hand, one signer",
-    body: "Every sign it knows is one-handed. Two-handed signs and scenes with more than one signer are out of scope.",
+    title: "Nothing corrects the spelling",
+    body: "The reading is exactly the letters that landed, in order. There is no language model tidying HELLQ into HELLO, which means a misread stays visible rather than being smoothed into something that was never signed.",
   },
   {
-    title: "Readings can be wrong",
-    body: "M, N, S and T look alike to the model, and signs that start the same way get confused too. When it is unsure it says so instead of guessing confidently.",
-  },
-  {
-    title: "The sentence is a guess",
-    body: "Signs carry no tense or articles, so a language model turns them into English. It is filling in words you did not sign, and it can fill in the wrong ones.",
+    title: "Facial grammar and signing space are missing",
+    body: "Eyebrows, mouth and head movement carry real meaning in ASL, and real signing places signs in the space around the signer. None of that is captured by 21 landmarks on one hand.",
   },
 ];
 

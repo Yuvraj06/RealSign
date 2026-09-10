@@ -1,5 +1,6 @@
 "use client";
 
+import type { RecognizerFault } from "@/features/sign-classifier/types";
 import { Panel } from "@/shared/components";
 import type {
   InterpreterStatus,
@@ -15,6 +16,7 @@ interface ReadingPanelProps {
   confidence: number | null;
   sentence: string;
   transcript: TranscriptEntry[];
+  modelFault: RecognizerFault | null;
 }
 
 export function ReadingPanel({
@@ -23,14 +25,15 @@ export function ReadingPanel({
   confidence,
   sentence,
   transcript,
+  modelFault,
 }: ReadingPanelProps) {
-  const active = status === "reading" || status === "sign";
+  const active = status === "reading";
 
   return (
     <Panel className="flex flex-col gap-8 p-7">
       <section aria-labelledby="tokens-heading">
         <h2 id="tokens-heading" className="font-body text-caption text-forest/75">
-          letters and signs
+          letters
         </h2>
 
         <div className="mt-3 flex min-h-[76px] flex-wrap items-center gap-2">
@@ -38,9 +41,11 @@ export function ReadingPanel({
             tokens.map((token) => <TokenChip key={token.id} token={token} />)
           ) : (
             <p className="measure font-body text-body text-forest/75">
-              {active
-                ? "Hold a letter until it lands, or sign a word in one movement."
-                : "Start the camera, then sign a word or spell one letter at a time."}
+              {modelFault
+                ? "The letter model could not be loaded, so nothing can be read. Check your connection and start the camera again."
+                : active
+                  ? "Hold each letter still until it lands. Dip your hand briefly between a double letter, and pause longer to finish the word."
+                  : "Start the camera, then spell a word one letter at a time."}
             </p>
           )}
         </div>
@@ -64,8 +69,9 @@ export function ReadingPanel({
           )}
         </p>
         <p className="measure mt-2 font-body text-caption text-forest/75">
-          Signs carry no tense or articles, so the smoothing step is what turns
-          them into an English sentence.
+          Exactly the letters that were read, in order. Nothing corrects them
+          into a word that looks more likely, so a misread letter stays visible
+          instead of being tidied away.
         </p>
       </section>
 
@@ -94,7 +100,7 @@ export function ReadingPanel({
             ))
           ) : (
             <li className="font-body text-body text-forest/75">
-              Finished phrases collect here, raw tokens beside the reading.
+              Finished words collect here, letter by letter beside the reading.
             </li>
           )}
         </ul>

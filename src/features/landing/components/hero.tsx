@@ -1,6 +1,5 @@
 "use client";
 
-import { SIGN_COUNT } from "@/features/sign-classifier/lib";
 import { scrollToInterpreter } from "@/features/scroll-experience/lib";
 import { Button } from "@/shared/components";
 
@@ -17,8 +16,8 @@ export function Hero() {
         </h1>
 
         <p className="measure mt-6 font-body text-lead text-forest/80">
-          Show your hands to the camera. realsign reads common signs and spells
-          out the rest.
+          Spell to the camera and realsign reads it back, one letter at a
+          time, without sending anything anywhere.
         </p>
 
         <div className="mt-10 flex items-center gap-4">
@@ -26,7 +25,7 @@ export function Hero() {
         </div>
 
         <p className="mt-8 font-body text-caption text-forest/75">
-          26 letters and {SIGN_COUNT} signs, one hand. Video never leaves your
+          24 letters of the manual alphabet, one hand. Video never leaves your
           device.
         </p>
       </div>

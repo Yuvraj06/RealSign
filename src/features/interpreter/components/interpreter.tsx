@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SIGN_COUNT } from "@/features/sign-classifier/lib";
 import { Button } from "@/shared/components";
 import { useInterpreter } from "../hooks";
 import { CameraPanel } from "./camera-panel";
@@ -14,6 +13,7 @@ export function Interpreter() {
     confidence,
     sentence,
     transcript,
+    modelFault,
     tracking,
     start,
     pause,
@@ -47,7 +47,7 @@ export function Interpreter() {
     copiedTimer.current = setTimeout(() => setCopied(false), 1800);
   }, [transcript]);
 
-  const reading = status === "reading" || status === "sign";
+  const reading = status === "reading";
   const starting = status === "starting";
 
   return (
@@ -58,8 +58,8 @@ export function Interpreter() {
             interpreter
           </h1>
           <p className="measure mt-1 font-body text-body text-forest/75">
-            Fingerspelling and {SIGN_COUNT} common signs, one hand, one signer.
-            Everything runs in this browser.
+            Fingerspelling, one hand, one signer. The camera and the model both
+            run in this browser.
           </p>
         </div>
 
@@ -107,13 +107,14 @@ export function Interpreter() {
           confidence={confidence}
           sentence={sentence}
           transcript={transcript}
+          modelFault={modelFault}
         />
       </div>
 
-      <p className="mt-6 font-body text-caption text-forest/75">
-        The camera and the hand tracking are real. The letters and signs beside
-        them are scripted sample output, because the classifier is not trained
-        yet.
+      <p className="measure mt-6 font-body text-caption text-forest/75">
+        Trained on 1,440 samples from one sitting, one hand, one camera. The
+        99.7% it scores on held-out frames from that sitting is an upper bound,
+        not a promise.
       </p>
     </div>
   );

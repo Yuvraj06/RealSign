@@ -15,7 +15,7 @@ const nunitoSans = Nunito_Sans({
 export const metadata: Metadata = {
   title: "realsign — hands to words",
   description:
-    "A browser-based American Sign Language interpreter. Reads fingerspelling and common one-handed signs. Video never leaves your device.",
+    "A browser-based American Sign Language interpreter. Reads the 24 held letters of the ASL manual alphabet from your webcam. Video never leaves your device.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

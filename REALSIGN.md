@@ -1,21 +1,23 @@
 # realsign
 
-A browser-based American Sign Language interpreter. A webcam reads fingerspelling and a small set of common word signs, a pair of small models names what it sees, and a language model turns the result into a readable sentence. Video never leaves the device.
+A browser-based American Sign Language interpreter. A webcam reads the 24 held letters of the manual alphabet and spells out what it sees. Video never leaves the device, and neither does anything derived from it.
 
 ---
 
 ## 1. Scope
 
-**In scope for v1**
+**In scope, and working**
 
-- ASL manual alphabet, 26 one-handed letters
-- A starter vocabulary of common one-handed word signs, described in section 8
+- The 24 held letters of the ASL manual alphabet, read one at a time
 - Single hand, single signer, front-facing camera
-- Recognition running entirely in the browser with TensorFlow.js
-- Sentence smoothing through one serverless function
+- Recognition running entirely in the browser, with no inference runtime at all
+- Segmentation of a held shape into a committed letter, and of a pause into a finished word
 
 **Explicitly out of scope**
 
+- **J and Z.** Both are traced in the air rather than held. A single frame of J is already an I, and a frame of Z is a D, so they need a model that reads time. Section 8.
+- **Word signs.** Same reason, plus a different input. Section 8 covers what that would take.
+- **Sentence smoothing.** Nothing rewrites the letters into likelier English. Section 11 explains why that is a decision rather than an omission.
 - Continuous signing and full ASL grammar
 - Facial grammar and non-manual markers, which carry real meaning in ASL
 - Two-handed signs
@@ -30,24 +32,26 @@ State these limits in the interface itself. A tool that is honest about its boun
 
 ```
 webcam
-  -> MediaPipe Tasks (Web)        landmarks, 21 points, ~30fps, client
-  -> normalization                translation, scale and rotation invariant
-  -> rolling buffer               30 to 45 frames
-  -> segmentation                 held pose, or movement burst
-       held pose   -> TF.js letter classifier   letter + confidence, client
-       movement    -> TF.js sign classifier     word + confidence, client
-  -> token buffer                 letters and words accumulate
-  -> /api/smooth                  serverless, calls the LLM
-  -> sentence + transcript
+  -> MediaPipe Tasks (Web)        21 landmarks, ~30fps, client
+  -> isFullyVisible               a hand half out of shot is dropped, not read
+  -> normalizeHand                mirror, translate, scale, rotate -> 63 values
+  -> letter model                 63 -> 128 -> 64 -> 24, three matrix multiplies
+  -> spelling.ts                  agreement over time -> one committed letter
+  -> pause                        1.2s with no hand closes the word
+  -> letters + transcript
 ```
 
-Segmentation sits before the models rather than after them, because it is what decides which model to ask. A held shape is a letter. A movement is a word sign. Section 8 covers that split in detail.
+Everything runs client-side. There is no inference runtime and no server call anywhere in the pipeline, so the privacy claim in the interface is unconditional rather than "except for one step".
 
-Everything runs client-side except the final smoothing call. That one exception exists because an API key cannot be shipped in browser code. The serverless function receives only a short list of recognized letters and signs, never video or landmarks.
+Two seams are worth naming. The tracker produces landmarks and knows nothing about letters; the recognizer names letters and knows nothing about cameras. And the model reads exactly one frame, while `spelling.ts` is the only thing that knows frames arrive in a stream — which is what keeps the temporal tuning in one small file that can be reasoned about without React in the way.
 
 ### Why landmarks instead of raw pixels
 
-Landmark input keeps the model at a few hundred kilobytes instead of tens of megabytes, trains on a laptop in minutes, runs comfortably at thirty frames per second on mid-range hardware, and generalizes across skin tone, lighting and background far better than a pixel-based classifier. This is the single most important architectural decision in the project.
+Landmark input keeps the model at 18k parameters and 214KB instead of tens of megabytes, trains on a laptop in under a minute, classifies a frame in 0.07ms, and generalizes across skin tone, lighting and background far better than a pixel-based classifier. This is the single most important architectural decision in the project, and it is what makes a browser-only build possible at all.
+
+### Why there is no inference runtime
+
+Section 7 originally said "convert to TF.js". The model turned out to be three dense layers, so the browser multiplies them itself in about forty lines: a wasm runtime to execute 18k parameters would be two orders of magnitude larger than the thing it executes, and would add a loading state and a failure mode to a file that is smaller than the hero image. `train_letters.py --check` verifies the shipped weights against PyTorch to 1e-6, which is the guarantee the library would otherwise have been providing.
 
 ---
 
@@ -55,13 +59,13 @@ Landmark input keeps the model at a few hundred kilobytes instead of tens of meg
 
 | Layer | Choice | Reason |
 |---|---|---|
-| Framework | Next.js (App Router) | Serverless route for smoothing lives in the same repo |
+| Framework | Next.js (App Router) | Static; nothing in the pipeline needs a server |
 | Styling | Tailwind CSS | Fast iteration on a small token set |
 | 3D | Three.js via React Three Fiber and Drei | Hand model, scroll-driven camera work |
 | Scroll | GSAP ScrollTrigger with Lenis | Reliable pinning and scrubbing |
 | Tracking | @mediapipe/tasks-vision | Current supported MediaPipe web build |
-| Model runtime | @tensorflow/tfjs | WebGL backend |
-| Training | Python, TensorFlow or PyTorch | Converted to TF.js layers format |
+| Model runtime | none | Three dense layers, multiplied in TypeScript (section 2) |
+| Training | Python, PyTorch | `training/train_letters.py`; exports plain JSON weights |
 
 ---
 
@@ -159,37 +163,37 @@ Model notes: place the file at `public/models/hand.glb`, load with `useGLTF`, an
 
 ## 6. The interpreter screen
 
-White background, arranged as two panels.
+White background, arranged as two panels with no control between them: the interpreter runs continuously while the camera is on, so there is nothing to press.
 
-**Left, camera.** Video feed mirrored horizontally, landmark skeleton drawn over it in green, rounded corners, a small status pill in the corner reading idle, reading or paused.
+**Left, camera.** Video feed mirrored horizontally, the landmark skeleton drawn over it in green, rounded corners, a small status pill reading idle, starting, reading or paused. `starting` covers the camera opening, MediaPipe loading and the weights arriving, so "reading" never appears while no letter could possibly land.
 
-**Right, reading.** Chips appearing left to right, a confidence meter, the smoothed sentence set large in the display face, and a running transcript beneath.
+**Right, reading.** The letters committed so far as chips, each with its confidence, then the finished word, then the transcript.
 
-**Two kinds of chip.** A letter chip holds one character. A word chip holds a whole sign, set in the same face at the same size, so a sentence built from both reads as one line rather than two systems bolted together. Word chips carry a small `sign` label, because a user needs to know whether the model read a gesture or spelled something out when they go to correct it.
+**Confidence rule.** Below 72% the chip turns clay. M, N, S and T are the same fist with the thumb in four places, and R, U and V differ only by how two fingers cross, so surfacing doubt beats a confident wrong answer. The percentage is always written out, so the warning never depends on colour alone.
 
-**Controls.** Start camera, clear, copy transcript. Verbs stay consistent throughout, so the button that says "start camera" produces a status that says "reading".
+**A letter has to be held.** Four agreeing samples at 100ms apart, so about four tenths of a second. Less and the shapes made in transit between two letters commit a third one on the way past; more and fingerspelling at any natural speed stops registering.
 
-**Empty states.** Say what to do rather than what is missing. "Show your hand to the camera and hold a letter" beats "no data".
+**The same letter twice needs a gap.** Once committed, a letter is latched and cannot be committed again until the hand has visibly moved on. Without that, holding a shape emits it ten times a second. With it, the L-L in HELLO has to be signed as two deliberate holds — measured, not theorised: driving the real pipeline with recorded frames and no gap between letters spells HELO. A brief dip of the hand clears the latch; a longer pause closes the word. Both are said in the panel, because it is the one place the interface asks the user to do something unobvious.
 
-**Confidence rule.** Below 72 percent, the chip switches to clay and the meter follows. M, N, S and T are visually similar in ASL and models genuinely confuse them, so surfacing doubt is more useful than a confident wrong answer. The same rule applies to word signs, where the confusable pairs are different but the problem is identical.
+**Empty states.** Say what to do rather than what is missing. "Show your hand to the camera, then hold one letter still at a time" beats "no data".
 
 ---
 
 ## 7. Build order
 
-**Phase 1, UI shell.** Full page with a mock recognizer emitting scripted letters on a timer. Finish the hero, the scroll reveal and every state of the interpreter panel before any model exists. This is where most of the visual work happens and it is not blocked by anything.
+**Phase 1, UI shell. Done.** Full page with a mock recognizer emitting scripted letters on a timer, so every state of the interpreter panel could be designed before a model existed.
 
-**Phase 2, tracking.** Wire MediaPipe, draw the skeleton over the video, confirm a stable frame rate. Success here means clean landmarks, not predictions.
+**Phase 2, tracking. Done.** MediaPipe wired, skeleton drawn, stable frame rate.
 
-**Phase 3, data.** Build a recorder route at `/record` that shows a target letter, captures normalized landmark frames while you hold the pose, and exports JSON. Aim for 40 to 60 samples per letter, varying hand distance, angle and lighting. Recording your own data through the same pipeline that will run at inference removes an entire class of distribution mismatch.
+**Phase 3, data. Done.** The recorder at `/record` captured 1,440 samples: 60 frames of each of the 24 held letters, normalized through the same function inference uses.
 
-**Phase 4, model.** Train a small dense network or a GRU on the recorded sequences, convert to TF.js, load in the browser. Keep a held-out set and record the confusion matrix, because it tells you which letters need more samples.
+**Phase 4, model. Done.** `training/train_letters.py` trains a three-layer dense network and writes `models/letters.json`. See section 14 for what its accuracy is and is not worth.
 
-**Phase 5, segmentation and smoothing.** Detect pauses to close each letter, accumulate a token buffer, and post it to the smoothing route.
+**Phase 5, segmentation and smoothing. Half done.** Segmentation is built and is `lib/spelling.ts`. Smoothing is deliberately not built; section 11.
 
-**Phase 6, word signs.** Extend the recorder to capture sequences instead of single poses, record the starter vocabulary plus the NONE class, train the sequence model, and route movement bursts to it. Section 8 covers this phase in full. It comes last of the recognition phases because it depends on segmentation already working, and because a fingerspelling-only build is a complete, useful thing to ship on its own.
+**Phase 6, word signs. Not started.** Section 8. It needs the recorder extended to capture sequences rather than single poses, and it is what would bring J and Z with it.
 
-**Phase 7, polish.** Permission denial handling, low light warning, mobile fallback, keyboard focus states, reduced motion.
+**Phase 7, polish.** Permission denial handling and reduced motion are done. Low light warning and a mobile fallback are not.
 
 ---
 
@@ -263,36 +267,33 @@ A vocabulary of isolated signs is not ASL. Real signing places signs in space an
 
 ## 9. Repository layout
 
+Feature-sliced: each slice owns its components, hooks, lib and types, and exports through a barrel.
+
 ```
 realsign/
-  app/
-    page.tsx                 hero, scroll reveal, interpreter
-    api/smooth/route.ts      serverless LLM call
-    record/page.tsx          letter recorder, single poses
-    record/signs/page.tsx    sign recorder, sequences
-  components/
-    HandModel.tsx            R3F scene, scroll-driven
-    Hero.tsx
-    Interpreter.tsx
-    CameraPanel.tsx
-    ReadingPanel.tsx
-  lib/
-    landmarks.ts             spatial normalization helpers
-    sequences.ts             trim, resample to 32 frames, velocity
-    classifier.ts            TF.js load and predict, letters
-    signs.ts                 TF.js load and predict, word signs
-    vocabulary.ts            the sign list and its labels
-    segmenter.ts             held pose against movement burst, token buffer
-  public/
-    models/hand.glb
-    model/letters/           converted TF.js letter model
-    model/signs/             converted TF.js sign model
+  realsign-letters-1440.json      the recorded dataset, 60 frames x 24 letters
   training/
-    train_letters.py
-    train_signs.py
-    convert.sh
-    data/
+    train_letters.py              trains the model and writes letters.json
+  src/
+    app/
+      page.tsx                    hero, scroll reveal, interpreter
+      record/page.tsx             the recorder that produced the dataset
+    features/
+      hand-tracking/
+        lib/landmarks.ts          normalizeHand: the shared normalization
+        hooks/use-hand-tracking.ts
+      sign-classifier/
+        models/letters.json       18k parameters, 214KB, committed
+        lib/letter-model.ts       loads the weights, runs the three layers
+        lib/spelling.ts           frames -> committed letters -> finished words
+        hooks/use-letter-recognizer.ts
+      interpreter/                the two-panel screen
+      recorder/                   capture UI, alphabet, dataset store
+      hand-viewer/, landing/, scroll-experience/
+    shared/                       components, config, lib, types
 ```
+
+The weights are committed rather than downloaded: they are 214KB, they are the output of a script in this repository run against data in this repository, and a build step that trains a model is a build step that can fail.
 
 ---
 
@@ -300,34 +301,41 @@ realsign/
 
 The step most projects get wrong. Raw MediaPipe coordinates are relative to the frame, so the same letter at a different distance produces completely different numbers.
 
-1. Translate so the wrist landmark sits at the origin.
-2. Scale so the distance from wrist to middle finger MCP equals one.
-3. Optionally rotate so that same vector points in a fixed direction, which removes hand tilt.
-4. Flatten the 21 points into a 63-value vector.
+`normalizeHand` in `hand-tracking/lib/landmarks.ts` is the whole of it, and the important property is that there is exactly one copy. It runs at record time and at inference time, so there is no second implementation to drift.
 
-Apply the identical function during recording and during inference. Any difference between the two silently destroys accuracy, and it is very hard to debug after the fact.
+1. Reflect a left hand about the frame's midline, into right-hand space.
+2. Translate so the wrist sits at the origin.
+3. Scale so the distance from wrist to middle-finger MCP equals one, measured in the image plane only — MediaPipe's z is far noisier than x and y, and letting it into the divisor makes the whole vector jump when depth guessing wobbles.
+4. Rotate so that same vector points at -pi/2, which removes hand tilt.
+5. Flatten the 21 points into a 63-value vector.
 
-One caveat for word signs. Steps 1 and 3 throw away where the hand is in the frame and which way it is tilted, which is exactly right for letters and wrong for signs that mean different things at different heights. Keep the wrist position and the rotation angle as extra channels on the sequence tensor rather than discarding them, so the sign model can use what the letter model needs removed.
+### Five of the 63 values are constant
+
+Steps 2 and 4 pin the wrist to (0, 0, 0) and the middle-MCP to (0, -1, z). Those five numbers are identical in every sample the function has ever produced, so their standard deviation across a training set is exactly zero.
+
+This is worth knowing because it is a trap. A standardizer that divides by the deviation, guarded with the usual small floor, divides those five features by that floor instead — and the first version of the training script did, which turned augmentation noise into values around 200,000 and collapsed the model to chance. The fix is to leave them unscaled. `train_letters.py` prints how many it found on every run rather than hard-coding five, so a change to the normalization surfaces rather than silently re-arming the trap.
+
+### The letters that inflate
+
+G, Q, H and P come out several times larger than the other letters, because they are signed with the hand rotated so that the wrist-to-middle-MCP vector is foreshortened in the image plane — and that vector is the divisor. Q reaches 5.3 where most letters stay under 2. It is not a bug, and it is mild evidence rather than noise, but it is why standardization is not optional here.
+
+### The mismatch that remains
+
+MediaPipe reports x normalized by frame width and y by frame height, so the two are in different units unless the frame is square. Steps 2 to 4 cancel translation, scale and rotation, but not that anisotropy. Recording and inference happening on the same camera hides it; a different aspect ratio would not.
 
 ---
 
 ## 11. Sentence smoothing
 
-```ts
-// app/api/smooth/route.ts
-export async function POST(req: Request) {
-  const { tokens } = await req.json();
-  // tokens: [{ kind: "letter", value: "H" }, { kind: "sign", value: "NAME" }]
-  // call the model with a prompt that returns plain text only,
-  // no preamble, no markdown, one sentence
-}
-```
+Not built, and the reason has changed.
 
-Prompt shape: give the model the token list, say that letters came from ASL fingerspelling and signs from a small fixed vocabulary, note that both may contain recognition errors, and ask for the most plausible short sentence as plain text. Correcting likely misreads, for example M against N, is a real benefit of this step rather than a side effect.
+The original design posted the token list to a serverless function and asked a language model to turn it into an English sentence. That was written when the pipeline was expected to produce word signs in ASL word order, where MY NAME S-A-M genuinely has to become "My name is Sam".
 
-Word signs make this step do more work, not less. ASL word order is not English word order, and citation-form signs carry no tense or articles, so a run of tokens like ME NAME S-A-M has to become "My name is Sam". Tell the model that in the prompt, and mark the sign tokens as glosses rather than as English words, otherwise it will treat them as already-correct output and leave them alone.
+What the pipeline actually produces is fingerspelling. A spelled word is already English — it is the letters, in order — so the only thing a language model could add is correction: turning HELLQ into HELLO. That is a real benefit and it is also the reason not to do it yet. This model is trained on one person in one sitting, and its errors have not been characterised on anyone else. A corrector tuned against unknown error modes will confidently rewrite correct spellings, and the failure would be invisible, because the output would read better.
 
-Cache repeated inputs, debounce so a call fires only once per completed token, and always fall back to displaying the raw tokens if the request fails.
+It also costs the unconditional privacy claim in section 2, which is currently worth more than the correction would be.
+
+When word signs land, this comes back, and it comes back with the ASL word-order problem it was originally designed for.
 
 ---
 
@@ -345,8 +353,26 @@ The audience for this project includes deaf and hard of hearing users, so access
 
 ## 13. Open questions
 
-- Whether to add two-handed signs, which widens the input to a real 126 values and needs a rule for which hand anchors the normalization when both are moving
-- How far the sign vocabulary can grow before a flat classifier stops working and the problem turns into continuous recognition
-- Whether users should be able to correct a wrong sign in the transcript, and whether those corrections should feed back into training data
-- Whether the transcript should persist across sessions
-- Whether to offer a text-to-sign reverse direction, which needs either video clips or an animated avatar
+- What the accuracy is for anyone who is not the person who recorded the data. Nothing else on this list is close. It needs a second recording session, by a different person on a different camera, held out entirely from training. Section 14.
+- Whether the confusable sets the alphabet flags (M/N/S/T, R/U/V) actually confuse this model on a stranger's hand. On the held-out frames they do not, but those frames are the same hand.
+- Whether four agreeing samples is the right threshold, and whether it should adapt to how fast someone is spelling rather than being a constant
+- Whether double letters can be detected properly, from the small bounce a signer actually makes, rather than by requiring a dip of the hand
+- Whether square-cropping the camera frame before MediaPipe closes the aspect-ratio gap in section 10, or just moves it
+- What a NONE class would take, so that a hand between letters reads as nothing rather than as the nearest letter
+
+## 14. What the accuracy figure is worth
+
+The training script reports 99.7% on held-out frames. That number is real, reproducible, and much weaker evidence than it looks.
+
+**Every letter is one continuous hold.** The recorder captures a burst of 60 consecutive frames while the shape is held still, and 60 is exactly the target, so each class is one burst. This is measured rather than assumed: neighbouring samples sit about 3.9 times closer together than random pairs of the same letter, and the training script recomputes that ratio on every run and prints it.
+
+**So a random split leaks.** Test frames would be near-duplicates of training frames taken milliseconds apart. The script trains a second model on a random split purely to show the gap: it scores 100%.
+
+**The reported split is temporal.** The first 60% of each hold trains, the next 20% selects the model, the last 20% is scored once. The test frames at least sit on the far side of whatever drift happened during the hold, which is why the honest number is 99.65% rather than 100%.
+
+**None of that crosses a session.** One person, one hand, one room, one camera, one afternoon. Lighting, skin tone, hand size, camera height, lens distortion and how precisely someone forms a letter are all held constant, and all of them vary in reality.
+
+Treat 99.7% as an upper bound on a stranger's experience, not an estimate of it. The interface says so, and the fix is a second recording session rather than a better model.
+
+---
+

@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# realsign
 
-## Getting Started
+A browser-based American Sign Language interpreter. Spell to your webcam and it reads the letters back, one at a time, with a confidence figure for each.
 
-First, run the development server:
+Everything runs on the device. There is no inference server, no upload, and no inference runtime either — the model is 18k parameters, so the browser multiplies it directly.
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`npm run dev` and `npm run build` both run `setup:vision` first, which vendors the MediaPipe wasm into `public/` and downloads the hand landmarker (~8MB, once). The letter model is committed.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Open [http://localhost:3000](http://localhost:3000) and press **start camera**. Hold one letter still until it lands; dip your hand briefly between a double letter, and pause for a second to finish the word.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The camera needs a secure context, so use `localhost` or https.
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| | |
+|---|---|
+| `npm run dev` | Dev server |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run setup:vision` | Vendor the MediaPipe runtime and tracker model |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## How it works
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+webcam -> MediaPipe hand landmarker   21 landmarks, ~30fps
+       -> normalizeHand               mirror, translate, scale, rotate -> 63 values
+       -> letter model                63 -> 128 -> 64 -> 24
+       -> spelling.ts                 agreement over time -> a committed letter
+       -> pause                       1.2s with no hand finishes the word
+```
 
-## Deploy on Vercel
+`REALSIGN.md` is the full spec: architecture, the design system, the normalization, and section 14 on exactly what the accuracy figure is worth.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## The model
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Trained on data this app recorded. `/record` captures 60 frames of each held letter through the same `normalizeHand` the interpreter uses at inference, which removes an entire class of distribution mismatch: there is one normalization function and no second implementation to drift.
+
+`realsign-letters-1440.json` is that dataset — 24 letters, 60 samples each. To retrain:
+
+```bash
+python -m venv .venv && .venv/bin/pip install torch numpy
+.venv/bin/python training/train_letters.py --check
+```
+
+That writes `src/features/sign-classifier/models/letters.json` and refuses to finish unless the written weights reproduce PyTorch to 1e-6.
+
+**J and Z are not included.** Both are traced in the air rather than held, so a single frame of J is already an I and a frame of Z is a D. They need a model that reads time.
+
+## What it does not do
+
+**The accuracy figure is an upper bound, not a promise.** It scores 99.7% on frames held out of training, and that is much weaker evidence than it sounds. All 60 samples of a letter are consecutive frames of one continuous hold — measured, not assumed: neighbouring samples sit ~3.9× closer together than random pairs of the same letter. So there is one person, one hand, one room and one camera behind every class. A random split scores 100% and means even less; the training script trains one on purpose to show the gap. Section 14 of the spec goes through this properly.
+
+**Doubled letters need a gap.** Once a letter is committed it is latched until the hand visibly moves on, otherwise holding a shape would emit it ten times a second. Spelling HELLO with no gap gives HELO.
+
+**Nothing corrects the spelling.** The reading is exactly the letters that landed. There is no language model turning HELLQ into HELLO, so a misread stays visible rather than being smoothed into something that was never signed.
+
+**No word signs, no facial grammar, no signing space.** Fingerspelling is how ASL handles names and words it has no sign for. It is not how ASL is spoken, and it is a small fraction of the language.
+
+The landing page says all of this too. That is deliberate.

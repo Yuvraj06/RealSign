@@ -5,7 +5,6 @@ const labels: Record<InterpreterStatus, string> = {
   idle: "idle",
   starting: "starting camera",
   reading: "reading",
-  sign: "reading a sign",
   paused: "paused",
 };
 
@@ -13,7 +12,6 @@ const tones: Record<InterpreterStatus, string> = {
   idle: "bg-white/90 text-forest/75",
   starting: "bg-white/90 text-forest",
   reading: "bg-green text-white",
-  sign: "bg-forest text-white",
   paused: "bg-sage text-forest",
 };
 
@@ -39,7 +37,7 @@ export function StatusPill({
         aria-hidden
         className={cn(
           "size-2 rounded-full",
-          status === "reading" || status === "sign"
+          status === "reading"
             ? "animate-pulse bg-white"
             : status === "starting"
               ? "animate-pulse bg-green"

@@ -1,1 +1,1 @@
-export { useMockRecognizer } from "./use-mock-recognizer";
+export { useLetterRecognizer } from "./use-letter-recognizer";
