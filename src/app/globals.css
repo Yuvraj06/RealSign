@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  /* Palette. Green is the only accent that carries meaning.
+     Clay means "the model is unsure" and is never decorative. */
+  --color-cream: #ffe9c1;
+  --color-forest: #22402f;
+  --color-green: #3f7a55;
+  --color-sage: #eaf1e8;
+  --color-moss: #7b8f7e;
+  --color-clay: #c97b4a;
+
+  --font-display: var(--font-quicksand), ui-rounded, system-ui, sans-serif;
+  --font-body: var(--font-nunito-sans), ui-sans-serif, system-ui, sans-serif;
+
+  /* Type scale: 14 / 16 / 20 / 28 / 40 / 64 / 96 */
+  --text-caption: 0.875rem;
+  --text-caption--line-height: 1.45;
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+  --text-lead: 1.25rem;
+  --text-lead--line-height: 1.55;
+  --text-title: 1.75rem;
+  --text-title--line-height: 1.25;
+  --text-title--letter-spacing: -0.01em;
+  --text-heading: 2.5rem;
+  --text-heading--line-height: 1.15;
+  --text-heading--letter-spacing: -0.02em;
+  --text-display: 4rem;
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.03em;
+  --text-hero: 6rem;
+  --text-hero--line-height: 0.98;
+  --text-hero--letter-spacing: -0.035em;
+
+  --radius-panel: 24px;
+  --radius-chip: 16px;
+
+  --shadow-soft: 0 12px 32px rgba(34, 64, 47, 0.08);
+  --shadow-lift: 0 20px 48px rgba(34, 64, 47, 0.12);
+}
+
+@layer base {
+  html {
+    /* Lenis drives smooth scrolling; native smooth scroll fights it. */
+    scroll-behavior: auto;
+  }
+
+  body {
+    /* Cream runs the whole way down, not just the hero. */
+    background-color: var(--color-cream);
+    color: var(--color-forest);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: var(--color-sage);
+    color: var(--color-forest);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-green);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+}
+
+@utility measure {
+  /* Body line length stays under 70 characters. */
+  max-width: 62ch;
+}
